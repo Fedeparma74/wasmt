@@ -1,18 +1,12 @@
 self.onmessage = async event => {
   const [module, memory, ptr, name] = event.data;
 
-  let base_url = globalThis.location.origin;
-
   let js;
   try {
-    js = await import(new URL('./pkg/' + name + '.js', base_url));
+    js = await importModule(name);
   } catch (_) {
-    try {
-      js = await import(new URL('./wasm-bindgen-test.js', base_url));
-    } catch (_) {
-      console.error("couldn't find " + new URL('./pkg/' + name + '.js', base_url));
-      close();
-    }
+    console.error("couldn't find " + name + '.js');
+    close();
   }
 
   const init = js.default;
@@ -39,4 +33,27 @@ self.onmessage = async event => {
   initOutput.__wbindgen_thread_destroy();
   // Tell the browser to stop the thread.
   close();
+}
+
+async function importModule(name) {
+  let base_url = globalThis.location.origin;
+
+  let moduleName = name;
+  let fileName = name.replace(/-/g, '_');
+
+  try {
+    return await import(moduleName);
+  } catch (_) { }
+
+  try {
+    return await import(new URL('./' + fileName + '.js', base_url));
+  } catch (_) { }
+
+  try {
+    return await import(new URL('./pkg/' + fileName + '.js', base_url));
+  } catch (_) { }
+
+  try {
+    return await import(new URL('./wasm-bindgen-test.js', base_url));
+  } catch (_) { }
 }

@@ -73,7 +73,7 @@ where
     ));
 
     let pkg_name = match PKG_NAME {
-        Some(name) => name.replace('-', "_"),
+        Some(name) => name.to_string(),
         None => env!("CARGO_PKG_NAME").to_string(),
     };
 
