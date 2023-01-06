@@ -4,7 +4,6 @@ pub mod utils;
 mod worker;
 
 use futures::future::{AbortHandle, FusedFuture};
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -15,11 +14,6 @@ compile_error!("This crate can only be compiled for wasm32-unknown-unknown targe
     target_feature = "mutable-globals"
 )))]
 compile_error!("Make sure to build std with `RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals'`");
-
-#[wasm_bindgen(start)]
-pub fn start() {
-    console_error_panic_hook::set_once();
-}
 
 pub struct JoinHandle<T> {
     abort_handle: AbortHandle,
