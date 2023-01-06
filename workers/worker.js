@@ -42,7 +42,7 @@ async function importModule(name) {
   let fileName = name.replace(/-/g, '_');
 
   try {
-    return await import(moduleName);
+    return await import(new URL('./node_modules/' + moduleName + '/' + fileName + '.js', base_url));
   } catch (_) { }
 
   try {
