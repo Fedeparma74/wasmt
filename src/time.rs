@@ -46,7 +46,7 @@ pub fn sleep_blocking_ms(ms: u32) {
 mod tests {
     use std::time::Duration;
 
-    use crate::thread;
+    use crate::task;
 
     use super::*;
 
@@ -78,7 +78,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_sleep_blocking() {
-        let handle = thread::spawn(async move {
+        let handle = task::spawn(async move {
             let start = PERFORMANCE.now();
             sleep_blocking(Duration::from_millis(100));
             let end = PERFORMANCE.now();
@@ -89,7 +89,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_sleep_blocking_ms() {
-        let handle = thread::spawn(async move {
+        let handle = task::spawn(async move {
             let start = PERFORMANCE.now();
             sleep_blocking_ms(100);
             let end = PERFORMANCE.now();

@@ -7,7 +7,7 @@ pub fn is_worker_scope() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::thread;
+    use crate::task;
 
     use super::*;
 
@@ -18,10 +18,10 @@ mod tests {
     #[wasm_bindgen_test]
     fn test_is_worker_scope() {
         assert!(!is_worker_scope());
-        thread::spawn(async move {
+        task::spawn(async move {
             assert!(is_worker_scope());
         });
-        thread::spawn_local(async move {
+        task::spawn_local(async move {
             assert!(!is_worker_scope());
         });
     }
