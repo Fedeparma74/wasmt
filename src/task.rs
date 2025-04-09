@@ -112,7 +112,7 @@ pub mod r#async {
         pub(crate) handle: JoinHandle<Result<JsValue, JsValue>>,
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_class = "JoinHandle")]
     impl JsJoinHandle {
         /// Awaits the result of the task on the current thread.
         #[wasm_bindgen]
