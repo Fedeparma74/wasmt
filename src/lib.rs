@@ -10,4 +10,6 @@ compile_error!("This crate can only be compiled for wasm32-unknown-unknown targe
     target_feature = "bulk-memory",
     target_feature = "mutable-globals"
 )))]
-compile_error!("Make sure to build std with `RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals'`");
+compile_error!(
+    "Make sure to build std with `RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals'`"
+);

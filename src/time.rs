@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::wasm_bindgen;
 use web_sys::{Window, WorkerGlobalScope};
 
 pub async fn sleep(dur: Duration) {
@@ -28,7 +28,7 @@ pub async fn sleep(dur: Duration) {
     .expect("failed to sleep");
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "sleepMs")]
 pub async fn sleep_ms(ms: u32) {
     sleep(Duration::from_millis(ms as u64)).await;
 }
@@ -37,7 +37,7 @@ pub fn sleep_blocking(dur: Duration) {
     std::thread::sleep(dur);
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "sleepBlockingMs")]
 pub fn sleep_blocking_ms(ms: u32) {
     sleep_blocking(Duration::from_millis(ms as u64));
 }
@@ -54,7 +54,7 @@ mod tests {
 
     #[wasm_bindgen]
     extern "C" {
-        #[wasm_bindgen(js_name = "performance")]
+        #[wasm_bindgen(thread_local_v2, js_name = "performance")]
         pub static PERFORMANCE: web_sys::Performance;
     }
 
@@ -62,26 +62,26 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_sleep() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         sleep(Duration::from_millis(100)).await;
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_sleep_ms() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         sleep_ms(100).await;
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_sleep_blocking() {
         let handle = task::spawn(async move {
-            let start = PERFORMANCE.now();
+            let start = PERFORMANCE.with(|performance| performance.now());
             sleep_blocking(Duration::from_millis(100));
-            let end = PERFORMANCE.now();
+            let end = PERFORMANCE.with(|performance| performance.now());
             end - start
         });
         assert!(handle.join().await.unwrap() >= 100.0);
@@ -90,9 +90,9 @@ mod tests {
     #[wasm_bindgen_test]
     async fn test_sleep_blocking_ms() {
         let handle = task::spawn(async move {
-            let start = PERFORMANCE.now();
+            let start = PERFORMANCE.with(|performance| performance.now());
             sleep_blocking_ms(100);
-            let end = PERFORMANCE.now();
+            let end = PERFORMANCE.with(|performance| performance.now());
             end - start
         });
         assert!(handle.join().await.unwrap() >= 100.0);

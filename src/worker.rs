@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
-use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
+use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 use web_sys::{Blob, Url, WorkerOptions};
 
 pub fn spawn_blocking<T>(f: impl FnOnce() -> T + 'static) -> web_sys::Worker
@@ -39,16 +39,20 @@ where
         ",
         get_script_path().unwrap()
     );
+    let blob_property_bag = web_sys::BlobPropertyBag::new();
+    blob_property_bag.set_type("application/javascript");
     let blob = Blob::new_with_str_sequence_and_options(
         &js_sys::Array::of1(&JsValue::from_str(&script)),
-        web_sys::BlobPropertyBag::new().type_("application/javascript"),
+        &blob_property_bag,
     )
     .expect("Unable to create blob with JavaScript glue code.");
+    let worker_options = WorkerOptions::new();
+    worker_options.set_type(web_sys::WorkerType::Module);
     let worker = web_sys::Worker::new_with_options(
         Url::create_object_url_with_blob(&blob)
             .expect("failed to create object url")
             .as_str(),
-        WorkerOptions::new().type_(web_sys::WorkerType::Module),
+        &worker_options,
     )
     .expect("failed to create worker");
     // Double-boxing because `dyn FnOnce` is unsized and so `Box<dyn FnOnce()>` has
@@ -110,16 +114,20 @@ where
         ",
         get_script_path().unwrap()
     );
+    let blob_property_bag = web_sys::BlobPropertyBag::new();
+    blob_property_bag.set_type("application/javascript");
     let blob = Blob::new_with_str_sequence_and_options(
         &js_sys::Array::of1(&JsValue::from_str(&script)),
-        web_sys::BlobPropertyBag::new().type_("application/javascript"),
+        &blob_property_bag,
     )
     .expect("Unable to create blob with JavaScript glue code.");
+    let worker_options = WorkerOptions::new();
+    worker_options.set_type(web_sys::WorkerType::Module);
     let worker = web_sys::Worker::new_with_options(
         Url::create_object_url_with_blob(&blob)
             .expect("failed to create object url")
             .as_str(),
-        WorkerOptions::new().type_(web_sys::WorkerType::Module),
+        &worker_options,
     )
     .expect("failed to create worker");
     // Double-boxing because `dyn FnOnce` is unsized and so `Box<dyn FnOnce()>` has

@@ -1,6 +1,7 @@
 use futures::future::{AbortHandle, Abortable};
+use js_sys::Promise;
 use std::future::Future;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 use crate::worker;
 
@@ -33,6 +34,24 @@ where
         aborted: false,
         rx,
     }
+}
+
+#[wasm_bindgen(js_name = "spawnLocal")]
+/// Runs a `Promise` on the current thread.
+/// The promise will be scheduled to run in the background and cannot contain any stack references.
+/// The promise will always be run on the next microtask tick.
+pub fn js_spawn_local(promise: Promise) -> r#async::JsJoinHandle {
+    let future = wasm_bindgen_futures::JsFuture::from(promise);
+    let handle = spawn_local(future);
+    r#async::JsJoinHandle { handle }
+}
+
+#[wasm_bindgen(js_name = "spawn")]
+/// Runs a `Promise` on a new worker thread.
+pub fn js_spawn(promise: Promise) -> r#async::JsJoinHandle {
+    let future = wasm_bindgen_futures::JsFuture::from(promise);
+    let handle = spawn(future);
+    r#async::JsJoinHandle { handle }
 }
 
 pub fn spawn_local<F>(future: F) -> r#async::JoinHandle<F::Output>
@@ -85,6 +104,30 @@ pub mod r#async {
 
         pub fn is_finished(&self) -> bool {
             self.rx.is_terminated()
+        }
+    }
+
+    #[wasm_bindgen(js_name = "JoinHandle")]
+    pub struct JsJoinHandle {
+        pub(crate) handle: JoinHandle<Result<JsValue, JsValue>>,
+    }
+
+    #[wasm_bindgen]
+    impl JsJoinHandle {
+        /// Awaits the result of the task on the current thread.
+        #[wasm_bindgen]
+        pub async fn join(self) -> Result<JsValue, JsValue> {
+            match self.handle.join().await {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(err)) => Err(err),
+                Err(err) => Err(JsValue::from_str(&err.to_string())),
+            }
+        }
+
+        /// Aborts the task.
+        #[wasm_bindgen]
+        pub fn abort(&mut self) {
+            self.handle.abort();
         }
     }
 }
@@ -147,10 +190,8 @@ impl From<JoinError> for JsValue {
 impl From<JoinError> for std::io::Error {
     fn from(err: JoinError) -> Self {
         match err {
-            JoinError::Aborted => {
-                std::io::Error::new(std::io::ErrorKind::Other, "thread was aborted")
-            }
-            JoinError::Panic => std::io::Error::new(std::io::ErrorKind::Other, "thread panicked"),
+            JoinError::Aborted => std::io::Error::other("thread was aborted"),
+            JoinError::Panic => std::io::Error::other("thread panicked"),
         }
     }
 }
@@ -168,7 +209,7 @@ mod tests {
 
     #[wasm_bindgen]
     extern "C" {
-        #[wasm_bindgen(js_name = "performance")]
+        #[wasm_bindgen(thread_local_v2, js_name = "performance")]
         pub static PERFORMANCE: web_sys::Performance;
     }
 
@@ -176,43 +217,43 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_spawn_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             sleep_blocking(Duration::from_millis(100));
             1
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_spawn_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             sleep(Duration::from_millis(100)).await;
             1
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_spawn_blocking_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_blocking(|| {
             sleep_blocking(Duration::from_millis(100));
             1
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_task_in_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let handle = spawn(async move {
                 sleep_blocking(Duration::from_millis(100));
@@ -221,13 +262,13 @@ mod tests {
             handle.join().await.unwrap()
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_local_task_in_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let handle = spawn_local(async move {
                 sleep(Duration::from_millis(100)).await;
@@ -236,13 +277,13 @@ mod tests {
             handle.join().await.unwrap()
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_blocking_task_in_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let handle = spawn_blocking(|| {
                 sleep_blocking(Duration::from_millis(100));
@@ -251,13 +292,13 @@ mod tests {
             handle.join().await.unwrap()
         });
         assert_eq!(handle.join().await, Ok(1));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_task_in_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             let handle = spawn(async move {
                 sleep_blocking(Duration::from_millis(100));
@@ -266,13 +307,13 @@ mod tests {
             handle.join().await.unwrap()
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_local_task_in_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             let handle = spawn_local(async move {
                 sleep(Duration::from_millis(100)).await;
@@ -281,13 +322,13 @@ mod tests {
             handle.join().await.unwrap()
         });
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_blocking_task_in_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             let handle = spawn_blocking(|| {
                 sleep_blocking(Duration::from_millis(100));
@@ -296,13 +337,13 @@ mod tests {
             handle.join().await.unwrap()
         });
         assert_eq!(handle.join().await, Ok(1));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start >= 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn(async move {
             sleep_blocking(Duration::from_millis(1000));
             1
@@ -312,13 +353,13 @@ mod tests {
         assert!(handle.is_finished());
         assert!(handle.aborted);
         assert!(handle.join().await == Err(JoinError::Aborted));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn_local(async move {
             sleep(Duration::from_millis(100)).await;
             1
@@ -328,13 +369,13 @@ mod tests {
         assert!(handle.is_finished());
         assert!(handle.aborted);
         assert!(handle.join().await == Err(JoinError::Aborted));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 100.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_task_in_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let mut handle = spawn(async move {
                 sleep_blocking(Duration::from_millis(1000));
@@ -349,13 +390,13 @@ mod tests {
         });
         assert!(!handle.is_finished());
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_task_in_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn_local(async move {
             let handle = spawn(async move {
                 sleep_blocking(Duration::from_millis(1000));
@@ -368,13 +409,13 @@ mod tests {
         assert!(handle.is_finished());
         assert!(handle.aborted);
         assert!(handle.join().await == Err(JoinError::Aborted));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_task_in_blocking_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_blocking(|| {
             futures::executor::block_on(async move {
                 let mut handle = spawn(async move {
@@ -390,13 +431,13 @@ mod tests {
             })
         });
         assert_eq!(handle.join().await, Ok(1));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_local_task_in_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let mut handle = spawn_local(async move {
                 sleep(Duration::from_millis(1000)).await;
@@ -411,13 +452,13 @@ mod tests {
         });
         assert!(!handle.is_finished());
         assert_eq!(handle.join().await.unwrap(), 1);
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_local_task_in_local_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn_local(async move {
             let handle = spawn_local(async move {
                 sleep(Duration::from_millis(1000)).await;
@@ -430,13 +471,13 @@ mod tests {
         assert!(handle.is_finished());
         assert!(handle.aborted);
         assert!(handle.join().await == Err(JoinError::Aborted));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 
     #[wasm_bindgen_test]
     async fn test_abort_local_task_in_blocking_task() {
-        let start = PERFORMANCE.now();
+        let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_blocking(|| {
             futures::executor::block_on(async move {
                 let mut handle = spawn_local(async move {
@@ -452,7 +493,7 @@ mod tests {
             })
         });
         assert_eq!(handle.join().await, Ok(1));
-        let end = PERFORMANCE.now();
+        let end = PERFORMANCE.with(|performance| performance.now());
         assert!(end - start < 1000.0);
     }
 }
