@@ -1,6 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
-use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
+use wasm_bindgen::{
+    JsCast,
+    prelude::{JsValue, wasm_bindgen},
+};
 use web_sys::{Blob, Url, WorkerOptions};
 
 pub fn spawn_blocking<T>(f: impl FnOnce() -> T + 'static) -> web_sys::Worker
@@ -88,8 +91,21 @@ where
 {
     let worker_options = WorkerOptions::new();
     worker_options.set_type(web_sys::WorkerType::Module);
-    let worker = web_sys::Worker::new_with_options("./worker.js", &worker_options)
-        .expect("failed to create worker");
+    let base_url = if let Some(window) = web_sys::window() {
+        window
+            .location()
+            .origin()
+            .expect("failed to get window location origin")
+    } else if let Ok(worker) = js_sys::global().dyn_into::<web_sys::WorkerGlobalScope>() {
+        worker.origin()
+    } else {
+        panic!("failed to get window or worker global scope");
+    };
+    let worker_url =
+        Url::new_with_base("./worker.js", &base_url).expect("failed to create worker url");
+    let worker =
+        web_sys::Worker::new_with_options(&worker_url.as_string().unwrap(), &worker_options)
+            .expect("failed to create worker");
     // Double-boxing because `dyn FnOnce` is unsized and so `Box<dyn FnOnce()>` has
     // an undefined layout (although I think in practice its a pointer and a length?).
     let ptr = Box::into_raw(Box::new(

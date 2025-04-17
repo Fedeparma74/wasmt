@@ -22,6 +22,7 @@ web-sys = { version = "0.3", features = [
   "Blob",
   "BlobPropertyBag",
   "Performance",
+  "Location",
 ] }
 
 [dev-dependencies]
