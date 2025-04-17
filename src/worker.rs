@@ -36,6 +36,10 @@ where
             // Tell the browser to stop the thread.
             close();
         }};
+
+        self.onerror = err => {{
+            console.error(err);
+        }};
         ",
         get_script_path().unwrap()
     );
@@ -110,6 +114,10 @@ where
             initialised.__wbindgen_thread_destroy();
             // Tell the browser to stop the thread.
             close();
+        }};
+
+        self.onerror = err => {{
+            console.error(err);
         }};
         ",
         get_script_path().unwrap()
