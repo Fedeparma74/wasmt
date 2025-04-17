@@ -103,9 +103,11 @@ where
     };
     let worker_url =
         Url::new_with_base("worker.js", &base_url).expect("failed to create worker url");
-    let worker =
-        web_sys::Worker::new_with_options(&worker_url.as_string().unwrap(), &worker_options)
-            .expect("failed to create worker");
+    let worker = web_sys::Worker::new_with_options(
+        &worker_url.to_string().as_string().unwrap(),
+        &worker_options,
+    )
+    .expect("failed to create worker");
     // Double-boxing because `dyn FnOnce` is unsized and so `Box<dyn FnOnce()>` has
     // an undefined layout (although I think in practice its a pointer and a length?).
     let ptr = Box::into_raw(Box::new(
