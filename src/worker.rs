@@ -102,7 +102,7 @@ where
         panic!("failed to get window or worker global scope");
     };
     let worker_url =
-        Url::new_with_base("./worker.js", &base_url).expect("failed to create worker url");
+        Url::new_with_base("worker.js", &base_url).expect("failed to create worker url");
     let worker =
         web_sys::Worker::new_with_options(&worker_url.as_string().unwrap(), &worker_options)
             .expect("failed to create worker");
