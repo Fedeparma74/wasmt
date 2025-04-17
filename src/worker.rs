@@ -88,15 +88,8 @@ where
 {
     let worker_options = WorkerOptions::new();
     worker_options.set_type(web_sys::WorkerType::Module);
-    let worker = web_sys::Worker::new_with_options(
-        Url::new("./worker.js")
-            .expect("failed to create worker url")
-            .as_string()
-            .expect("failed to create worker url")
-            .as_str(),
-        &worker_options,
-    )
-    .expect("failed to create worker");
+    let worker = web_sys::Worker::new_with_options("./worker.js", &worker_options)
+        .expect("failed to create worker");
     // Double-boxing because `dyn FnOnce` is unsized and so `Box<dyn FnOnce()>` has
     // an undefined layout (although I think in practice its a pointer and a length?).
     let ptr = Box::into_raw(Box::new(
