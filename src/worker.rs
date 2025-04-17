@@ -86,54 +86,13 @@ pub fn spawn<F>(future: F) -> web_sys::Worker
 where
     F: Future<Output = ()> + 'static,
 {
-    let script = format!(
-        "
-        import init, * as wasm_bindgen from '{}';
-        globalThis.wasm_bindgen = wasm_bindgen;
-        self.onmessage = async event => {{
-            const [module, memory, ptr] = event.data;
-
-            let initialised = await init(module, memory).catch(err => {{
-                // Propagate to main `onerror`:
-                setTimeout(() => {{
-                    throw err;
-                }});
-                // Rethrow to keep promise rejected and prevent execution of further commands:
-                throw err;
-            }});
-
-            await wasm_bindgen.async_worker_entry_point(ptr);
-
-            // Clean up thread resources. Depending on what you're doing with the thread, this might
-            // not be what you want. (For example, if the thread spawned some javascript tasks
-            // and exited, this is going to cancel those tasks.) But if you're using threads in the
-            // usual native way (where you spin one up to do some work until it finisheds) then
-            // you'll want to clean up the thread's resources.
-          
-            // Free memory (stack, thread-locals) held (in the wasm linear memory) by the thread.
-            initialised.__wbindgen_thread_destroy();
-            // Tell the browser to stop the thread.
-            close();
-        }};
-
-        self.onerror = err => {{
-            console.error(err);
-        }};
-        ",
-        get_script_path().unwrap()
-    );
-    let blob_property_bag = web_sys::BlobPropertyBag::new();
-    blob_property_bag.set_type("application/javascript");
-    let blob = Blob::new_with_str_sequence_and_options(
-        &js_sys::Array::of1(&JsValue::from_str(&script)),
-        &blob_property_bag,
-    )
-    .expect("Unable to create blob with JavaScript glue code.");
     let worker_options = WorkerOptions::new();
     worker_options.set_type(web_sys::WorkerType::Module);
     let worker = web_sys::Worker::new_with_options(
-        Url::create_object_url_with_blob(&blob)
-            .expect("failed to create object url")
+        Url::new("./worker.js")
+            .expect("failed to create worker url")
+            .as_string()
+            .expect("failed to create worker url")
             .as_str(),
         &worker_options,
     )
