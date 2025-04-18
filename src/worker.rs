@@ -17,6 +17,12 @@ extern "C" {
     ) -> Result<web_sys::Worker, JsValue>;
 }
 
+#[wasm_bindgen(module = "/worker.js")]
+extern "C" {
+    #[wasm_bindgen(js_name = includeWorker)]
+    fn include_worker();
+}
+
 pub fn spawn_blocking<T>(f: impl FnOnce() -> T + 'static) -> web_sys::Worker
 where
     T: 'static,
