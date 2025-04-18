@@ -7,14 +7,6 @@ self.onmessage = async event => {
         const [module, memory, ptr, baseUrl] = event.data;
 
         console.log('[Worker] Base url from main thread:', baseUrl);
-        console.log('[Worker] import.meta.url:', import.meta.url);
-        console.log('[Worker] globalThis.location.origin url:', globalThis.location.origin);
-        console.log('[Worker] globalThis.location.href url:', globalThis.location.href);
-        console.log('[Worker] import.meta.env.BASE_URL:', import.meta.env.BASE_URL);
-
-        // const wasmUrl = new URL("../hydra-node/hydra_node.js", globalThis.location.href);
-
-        // console.log('[Worker] Loading WASM module from: ' + wasmUrl);
 
         let wasmPkg;
         try {
@@ -25,9 +17,17 @@ self.onmessage = async event => {
 
             console.error('[Worker] Failed to load WASM package:', err);
 
-            wasmPkg = await import('hydra-node');
+            try {
+                // Try loading from the base URL
+                const wasmUrl = new URL("./hydra-node/hydra_node.js", baseUrl);
+                console.log('[Worker] Loading WASM module from: ' + wasmUrl);
+                wasmPkg = await import(wasmUrl);
 
-            console.log('[Worker] Loaded WASM package from hydra-node alias');
+                console.log('[Worker] Loaded WASM package from base URL');
+            } catch (err) {
+                console.error('[Worker] Failed to load WASM package from base URL:', err);
+                throw err;
+            }
         }
 
         console.log('[Worker] Loaded WASM package');
