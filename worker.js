@@ -4,15 +4,31 @@ self.onmessage = async event => {
     {
         console.log('[Worker] Received message:', event.data);
 
-        const [module, memory, ptr, scriptPath] = event.data;
+        const [module, memory, ptr, baseUrl] = event.data;
 
-        console.log('[Worker] Base url:', globalThis.location.origin);
+        console.log('[Worker] Base url from main thread:', baseUrl);
+        console.log('[Worker] import.meta.url:', import.meta.url);
+        console.log('[Worker] globalThis.location.origin url:', globalThis.location.origin);
+        console.log('[Worker] globalThis.location.href url:', globalThis.location.href);
+        console.log('[Worker] import.meta.env.BASE_URL:', import.meta.env.BASE_URL);
 
-        const wasmUrl = new URL("./hydra-node/hydra_node.js", globalThis.location.origin);
+        // const wasmUrl = new URL("../hydra-node/hydra_node.js", globalThis.location.href);
 
-        console.log('[Worker] Loading WASM module from: ' + wasmUrl);
+        // console.log('[Worker] Loading WASM module from: ' + wasmUrl);
 
-        const wasmPkg = await import(wasmUrl);
+        let wasmPkg;
+        try {
+            wasmPkg = await import("../hydra-node/hydra_node.js");
+
+            console.log('[Worker] Loaded WASM package from relative path');
+        } catch (err) {
+
+            console.error('[Worker] Failed to load WASM package:', err);
+
+            wasmPkg = await import('hydra-node');
+
+            console.log('[Worker] Loaded WASM package from hydra-node alias');
+        }
 
         console.log('[Worker] Loaded WASM package');
 

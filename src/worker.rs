@@ -1,6 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
-use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
+use wasm_bindgen::{
+    JsCast,
+    prelude::{JsValue, wasm_bindgen},
+};
 use web_sys::{Blob, Url, WorkerOptions};
 
 #[wasm_bindgen(module = "/workerSpawner.js")]
@@ -116,14 +119,17 @@ where
     let module_val = wasm_bindgen::module();
     let memory_val = wasm_bindgen::memory();
 
+    let base_url = if let Some(window) = web_sys::window() {
+        window.location().origin().unwrap_or_default()
+    } else if let Ok(worker) = js_sys::global().dyn_into::<web_sys::WorkerGlobalScope>() {
+        worker.origin()
+    } else {
+        unreachable!("Not in a worker or window context")
+    };
+
     // 3. Call the imported JavaScript function to create the worker
     //    and send the initial data. 'catch' in #[wasm_bindgen] intercepts JS errors.
-    let result = spawn_worker_and_send_data(
-        &module_val,
-        &memory_val,
-        ptr as u32,
-        &get_script_path().unwrap(),
-    );
+    let result = spawn_worker_and_send_data(&module_val, &memory_val, ptr as u32, &base_url);
 
     // 4. Error handling in case the JS function fails
     if result.is_err() {
