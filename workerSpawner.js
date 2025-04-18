@@ -15,10 +15,6 @@ export function spawnWorkerAndSendData(module, memory, ptr, scriptPath) {
       type: 'module' // Important for ES Modules in the worker
     });
 
-    // const worker = new Worker(new URL('./worker.js', import.meta.url), {
-    //   type: 'module' // Important for ES Modules in the worker
-    // });
-
     // Send the initial data to the worker
     // The worker expects [module, memory, ptr]
     worker.postMessage([module, memory, ptr, scriptPath]);
