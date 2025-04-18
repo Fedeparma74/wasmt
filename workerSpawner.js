@@ -1,23 +1,21 @@
+import MyWorker from './worker?worker';
+
 /**
  * Creates the worker and sends the initial data.
  * Called from Rust.
  * @param {WebAssembly.Module} module - The compiled WASM module.
  * @param {WebAssembly.Memory} memory - The WASM memory (often SharedArrayBuffer).
  * @param {number} ptr - A pointer for the worker entry point.
- * @param {string} scriptPath - The path to the worker script.
  * @returns {Worker} The created Worker instance.
  */
-export function spawnWorkerAndSendData(module, memory, ptr, scriptPath) {
+export function spawnWorkerAndSendData(module, memory, ptr) {
   console.log("[JS Helper] Spawning worker...");
   try {
-    const workerURL = new URL('./worker.js', import.meta.url);
-    const worker = new Worker(workerURL, {
-      type: 'module' // Important for ES Modules in the worker
-    });
+    const worker = new MyWorker();
 
     // Send the initial data to the worker
     // The worker expects [module, memory, ptr]
-    worker.postMessage([module, memory, ptr, scriptPath]);
+    worker.postMessage([module, memory, ptr]);
     console.log("[JS Helper] Initial data posted to worker.");
 
     // Optional: Add listener for messages FROM the worker
