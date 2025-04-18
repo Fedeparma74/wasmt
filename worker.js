@@ -1,4 +1,4 @@
-export function includeWorker() { }
+import init, * as wasmPkg from "./hydra_node";
 
 self.onmessage = async event => {
     {
@@ -8,31 +8,43 @@ self.onmessage = async event => {
 
         console.log('[Worker] Base url from main thread:', baseUrl);
 
-        let wasmPkg;
+        // let wasmPkg;
+        // try {
+        //     wasmPkg = await import("../hydra-node/hydra_node.js");
+
+        //     console.log('[Worker] Loaded WASM package from relative path');
+        // } catch (err) {
+
+        //     console.error('[Worker] Failed to load WASM package:', err);
+
+        //     try {
+        //         // Try loading from the base URL
+        //         const wasmUrl = new URL("./hydra-node/hydra_node.js", baseUrl);
+        //         console.log('[Worker] Loading WASM module from: ' + wasmUrl);
+        //         wasmPkg = await import(wasmUrl);
+
+        //         console.log('[Worker] Loaded WASM package from base URL');
+        //     } catch (err) {
+        //         console.error('[Worker] Failed to load WASM package from base URL:', err);
+        //         throw err;
+        //     }
+        // }
+
+        console.log('[Worker] import.meta.url:', import.meta.url);
+
         try {
-            wasmPkg = await import("../hydra-node/hydra_node.js");
+            const wasmUrl = new URL("./hydra-node/hydra_node.js", import.meta.url);
+            console.log('[Worker] Loading WASM module from: ' + import.meta.url);
+            const anotherWasmPkg = await import(import.meta.url);
 
-            console.log('[Worker] Loaded WASM package from relative path');
+            console.log('[Worker] Loaded WASM package from import.meta.url: ', anotherWasmPkg);
         } catch (err) {
-
-            console.error('[Worker] Failed to load WASM package:', err);
-
-            try {
-                // Try loading from the base URL
-                const wasmUrl = new URL("./hydra-node/hydra_node.js", baseUrl);
-                console.log('[Worker] Loading WASM module from: ' + wasmUrl);
-                wasmPkg = await import(wasmUrl);
-
-                console.log('[Worker] Loaded WASM package from base URL');
-            } catch (err) {
-                console.error('[Worker] Failed to load WASM package from base URL:', err);
-                throw err;
-            }
+            console.error('[Worker] Failed to load WASM package from base URL:', err);
         }
 
         console.log('[Worker] Loaded WASM package');
 
-        const init = wasmPkg.default;
+        // const init = wasmPkg.default;
         const initialised = await init(module, memory).catch(err => {
             {
                 // Propagate to main `onerror`:
@@ -68,3 +80,5 @@ self.onerror = err => {
         console.error('[Worker] Error:', err);
     }
 };
+
+export function includeWorker() { }
