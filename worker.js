@@ -2,11 +2,17 @@ export function includeWorker() { }
 
 self.onmessage = async event => {
     {
-        const baseUrl = globalThis.location.origin;
+        console.log('[Worker] Received message:', event.data);
 
         const [module, memory, ptr, scriptPath] = event.data;
 
-        const wasmPkg = await import(new URL(scriptPath, baseUrl));
+        const wasmUrl = new URL(scriptPath, import.meta.url);
+
+        console.log('[Worker] Loading WASM module from: ' + wasmUrl);
+
+        const wasmPkg = await import(wasmUrl);
+
+        console.log('[Worker] Loaded WASM package');
 
         const init = wasmPkg.default;
         const initialised = await init(module, memory).catch(err => {
@@ -21,6 +27,8 @@ self.onmessage = async event => {
                 throw err;
             }
         });
+
+        console.log('[Worker] Initialised WASM package:', initialised);
 
         await wasmPkg.async_worker_entry_point(ptr);
 
