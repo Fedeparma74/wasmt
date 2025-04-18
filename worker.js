@@ -6,9 +6,9 @@ self.onmessage = async event => {
 
         const [module, memory, ptr, scriptPath] = event.data;
 
-        console.log('[Worker] Base url:', import.meta.url);
+        console.log('[Worker] Base url:', globalThis.location.origin);
 
-        const wasmUrl = new URL("./hydra-node/hydra_node.js", import.meta.url);
+        const wasmUrl = new URL("./hydra-node/hydra_node.js", globalThis.location.origin);
 
         console.log('[Worker] Loading WASM module from: ' + wasmUrl);
 
