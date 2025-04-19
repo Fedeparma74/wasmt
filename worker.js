@@ -1,4 +1,4 @@
-import init, * as wasmPkg from '../../wasm-bindgen-test';
+import init, * as wasmPkg from 'hydra-node';
 
 self.onmessage = async event => {
     console.log('[Worker] Received message:', event.data);
