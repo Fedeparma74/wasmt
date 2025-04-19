@@ -15,14 +15,8 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = [
   "Window",
   "Worker",
-  "WorkerOptions",
-  "WorkerType",
   "WorkerGlobalScope",
-  "Url",
-  "Blob",
-  "BlobPropertyBag",
   "Performance",
-  "Location",
   "console",
 ] }
 
