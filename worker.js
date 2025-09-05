@@ -1,15 +1,12 @@
 import init, * as wasmPkg from 'hydra-node';
 
 self.onmessage = async event => {
-    console.log('[Worker] Received message:', event.data);
     const [module, memory, ptr, isAsync] = event.data;
 
     const initialised = await init(module, memory).catch(err => {
         setTimeout(() => { throw err; });
         throw err;
     });
-
-    console.log('[Worker] Initialised WASM package:', initialised);
 
     if (isAsync) {
         await wasmPkg.async_worker_entry_point(ptr);
