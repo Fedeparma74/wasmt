@@ -5,6 +5,11 @@ pub fn is_worker_scope() -> bool {
     js_sys::global().dyn_into::<WorkerGlobalScope>().is_ok()
 }
 
+#[cfg(all(
+    target_feature = "atomics",
+    target_feature = "bulk-memory",
+    target_feature = "mutable-globals"
+))]
 #[cfg(test)]
 mod tests {
     use crate::task;

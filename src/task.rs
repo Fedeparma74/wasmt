@@ -3,8 +3,18 @@ use js_sys::Promise;
 use std::future::Future;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
+#[cfg(all(
+    target_feature = "atomics",
+    target_feature = "bulk-memory",
+    target_feature = "mutable-globals"
+))]
 use crate::worker;
 
+#[cfg(all(
+    target_feature = "atomics",
+    target_feature = "bulk-memory",
+    target_feature = "mutable-globals"
+))]
 pub fn spawn_blocking<T>(f: impl FnOnce() -> T + 'static) -> blocking::JoinHandle<T>
 where
     T: 'static,
@@ -16,6 +26,11 @@ where
     blocking::JoinHandle { rx }
 }
 
+#[cfg(all(
+    target_feature = "atomics",
+    target_feature = "bulk-memory",
+    target_feature = "mutable-globals"
+))]
 pub fn spawn<F>(future: F) -> r#async::JoinHandle<F::Output>
 where
     F: Future + 'static,
@@ -46,6 +61,11 @@ pub fn js_spawn_local(promise: Promise) -> r#async::JsJoinHandle {
     r#async::JsJoinHandle { handle }
 }
 
+#[cfg(all(
+    target_feature = "atomics",
+    target_feature = "bulk-memory",
+    target_feature = "mutable-globals"
+))]
 #[wasm_bindgen(js_name = "spawn")]
 /// Runs a `Promise` on a new worker thread.
 pub fn js_spawn(promise: Promise) -> r#async::JsJoinHandle {
@@ -200,7 +220,7 @@ impl From<JoinError> for std::io::Error {
 mod tests {
     use std::time::Duration;
 
-    use crate::time::{sleep, sleep_blocking};
+    use crate::time;
 
     use super::*;
 
@@ -215,11 +235,16 @@ mod tests {
 
     wasm_bindgen_test_configure!(run_in_browser);
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_spawn_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
-            sleep_blocking(Duration::from_millis(100));
+            time::sleep_blocking(Duration::from_millis(100));
             1
         });
         assert_eq!(handle.join().await.unwrap(), 1);
@@ -231,7 +256,7 @@ mod tests {
     async fn test_spawn_local_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
-            sleep(Duration::from_millis(100)).await;
+            time::sleep(Duration::from_millis(100)).await;
             1
         });
         assert_eq!(handle.join().await.unwrap(), 1);
@@ -239,11 +264,16 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_spawn_blocking_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_blocking(|| {
-            sleep_blocking(Duration::from_millis(100));
+            time::sleep_blocking(Duration::from_millis(100));
             1
         });
         assert_eq!(handle.join().await.unwrap(), 1);
@@ -251,12 +281,17 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_task_in_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let handle = spawn(async move {
-                sleep_blocking(Duration::from_millis(100));
+                time::sleep_blocking(Duration::from_millis(100));
                 1
             });
             handle.join().await.unwrap()
@@ -266,12 +301,17 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_local_task_in_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let handle = spawn_local(async move {
-                sleep(Duration::from_millis(100)).await;
+                time::sleep(Duration::from_millis(100)).await;
                 1
             });
             handle.join().await.unwrap()
@@ -281,12 +321,17 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_blocking_task_in_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let handle = spawn_blocking(|| {
-                sleep_blocking(Duration::from_millis(100));
+                time::sleep_blocking(Duration::from_millis(100));
                 1
             });
             handle.join().await.unwrap()
@@ -296,12 +341,17 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_task_in_local_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             let handle = spawn(async move {
-                sleep_blocking(Duration::from_millis(100));
+                time::sleep_blocking(Duration::from_millis(100));
                 1
             });
             handle.join().await.unwrap()
@@ -316,7 +366,7 @@ mod tests {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             let handle = spawn_local(async move {
-                sleep(Duration::from_millis(100)).await;
+                time::sleep(Duration::from_millis(100)).await;
                 1
             });
             handle.join().await.unwrap()
@@ -326,12 +376,17 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_blocking_task_in_local_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_local(async move {
             let handle = spawn_blocking(|| {
-                sleep_blocking(Duration::from_millis(100));
+                time::sleep_blocking(Duration::from_millis(100));
                 1
             });
             handle.join().await.unwrap()
@@ -341,11 +396,16 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_abort_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn(async move {
-            sleep_blocking(Duration::from_millis(1000));
+            time::sleep_blocking(Duration::from_millis(1000));
             1
         });
         assert!(!handle.is_finished());
@@ -361,7 +421,7 @@ mod tests {
     async fn test_abort_local_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn_local(async move {
-            sleep(Duration::from_millis(100)).await;
+            time::sleep(Duration::from_millis(100)).await;
             1
         });
         assert!(!handle.is_finished());
@@ -373,12 +433,17 @@ mod tests {
         assert!(end - start < 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_abort_task_in_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let mut handle = spawn(async move {
-                sleep_blocking(Duration::from_millis(1000));
+                time::sleep_blocking(Duration::from_millis(1000));
                 1
             });
             assert!(!handle.is_finished());
@@ -394,12 +459,17 @@ mod tests {
         assert!(end - start < 1000.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_abort_task_in_local_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn_local(async move {
             let handle = spawn(async move {
-                sleep_blocking(Duration::from_millis(1000));
+                time::sleep_blocking(Duration::from_millis(1000));
                 1
             });
             handle.join().await.unwrap()
@@ -413,13 +483,18 @@ mod tests {
         assert!(end - start < 1000.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_abort_task_in_blocking_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_blocking(|| {
             futures::executor::block_on(async move {
                 let mut handle = spawn(async move {
-                    sleep_blocking(Duration::from_millis(1000));
+                    time::sleep_blocking(Duration::from_millis(1000));
                     1
                 });
                 assert!(!handle.is_finished());
@@ -435,12 +510,17 @@ mod tests {
         assert!(end - start < 1000.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_abort_local_task_in_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn(async move {
             let mut handle = spawn_local(async move {
-                sleep(Duration::from_millis(1000)).await;
+                time::sleep(Duration::from_millis(1000)).await;
                 1
             });
             assert!(!handle.is_finished());
@@ -461,7 +541,7 @@ mod tests {
         let start = PERFORMANCE.with(|performance| performance.now());
         let mut handle = spawn_local(async move {
             let handle = spawn_local(async move {
-                sleep(Duration::from_millis(1000)).await;
+                time::sleep(Duration::from_millis(1000)).await;
                 1
             });
             handle.join().await.unwrap()
@@ -475,13 +555,18 @@ mod tests {
         assert!(end - start < 1000.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_abort_local_task_in_blocking_task() {
         let start = PERFORMANCE.with(|performance| performance.now());
         let handle = spawn_blocking(|| {
             futures::executor::block_on(async move {
                 let mut handle = spawn_local(async move {
-                    sleep(Duration::from_millis(1000)).await;
+                    time::sleep(Duration::from_millis(1000)).await;
                     1
                 });
                 assert!(!handle.is_finished());

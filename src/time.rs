@@ -46,8 +46,6 @@ pub fn sleep_blocking_ms(ms: u32) {
 mod tests {
     use std::time::Duration;
 
-    use crate::task;
-
     use super::*;
 
     use wasm_bindgen_test::*;
@@ -76,9 +74,14 @@ mod tests {
         assert!(end - start >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_sleep_blocking() {
-        let handle = task::spawn(async move {
+        let handle = crate::task::spawn(async move {
             let start = PERFORMANCE.with(|performance| performance.now());
             sleep_blocking(Duration::from_millis(100));
             let end = PERFORMANCE.with(|performance| performance.now());
@@ -87,9 +90,14 @@ mod tests {
         assert!(handle.join().await.unwrap() >= 100.0);
     }
 
+    #[cfg(all(
+        target_feature = "atomics",
+        target_feature = "bulk-memory",
+        target_feature = "mutable-globals"
+    ))]
     #[wasm_bindgen_test]
     async fn test_sleep_blocking_ms() {
-        let handle = task::spawn(async move {
+        let handle = crate::task::spawn(async move {
             let start = PERFORMANCE.with(|performance| performance.now());
             sleep_blocking_ms(100);
             let end = PERFORMANCE.with(|performance| performance.now());
