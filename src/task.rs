@@ -50,6 +50,18 @@ where
         rx,
     }
 }
+#[cfg(any(
+    not(target_feature = "atomics"),
+    not(target_feature = "bulk-memory"),
+    not(target_feature = "mutable-globals")
+))]
+pub fn spawn<F>(future: F) -> r#async::JoinHandle<F::Output>
+where
+    F: Future + 'static,
+    F::Output: 'static,
+{
+    spawn_local(future)
+}
 
 #[wasm_bindgen(js_name = "spawnLocal")]
 /// Runs a `Promise` on the current thread.
