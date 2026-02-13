@@ -4,3 +4,9 @@ build-std = ['std', 'panic_abort']
 [build]
 target = "wasm32-unknown-unknown"
 rustflags = '-C target-feature=+atomics,+bulk-memory,+mutable-globals'
+
+[env]
+# Override this with your wasm package name (the npm/bundler module name).
+# e.g. WASMT_WASM_PKG = "my-app"
+# Defaults to CARGO_PKG_NAME if not set.
+# WASMT_WASM_PKG = "my-app"

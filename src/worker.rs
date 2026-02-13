@@ -22,14 +22,11 @@ extern "C" {
     fn include_worker();
 }
 
-pub fn spawn_blocking<T>(f: impl FnOnce() -> T + 'static) -> web_sys::Worker
-where
-    T: 'static,
-{
+pub fn spawn_blocking(f: impl FnOnce() + 'static) -> web_sys::Worker {
     // 1. Prepare the pointer to the work to be executed
     //    Double-boxing because `dyn FnOnce` is unsized and so `Box<dyn FnOnce()>` has
     //    an undefined layout (although I think in practice its a pointer and a length?).
-    let ptr = Box::into_raw(Box::new(Box::new(f) as Box<dyn FnOnce() -> T>));
+    let ptr = Box::into_raw(Box::new(Box::new(f) as Box<dyn FnOnce()>));
 
     // 2. Get references to the WASM module and memory
     //    These are provided by the main thread (wasm-bindgen magic)

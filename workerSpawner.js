@@ -10,17 +10,7 @@ import MyWorker from './worker?worker';
  * @returns {Worker} The created Worker instance.
  */
 export function spawnWorkerAndSendData(module, memory, ptr, isAsync) {
-  try {
-    const worker = new MyWorker();
-
-    // Send the initial data to the worker
-    // The worker expects [module, memory, ptr]
-    worker.postMessage([module, memory, ptr, isAsync]);
-
-    return worker; // Return the Worker instance
-
-  } catch (e) {
-    // Re-throw error so Rust can handle it
-    throw e;
-  }
+  const worker = new MyWorker();
+  worker.postMessage([module, memory, ptr, isAsync]);
+  return worker;
 }

@@ -1,28 +1,24 @@
 use std::time::Duration;
 
-use wasm_bindgen::JsCast;
+use wasm_bindgen::JsCast as _;
 use wasm_bindgen::prelude::wasm_bindgen;
 use web_sys::{Window, WorkerGlobalScope};
 
 pub async fn sleep(dur: Duration) {
+    let ms = dur.as_millis().min(i32::MAX as u128) as i32;
     wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
-        match js_sys::global().dyn_into::<Window>() {
-            Ok(window) => window
-                .set_timeout_with_callback_and_timeout_and_arguments_0(
-                    &resolve,
-                    dur.as_millis() as i32,
-                )
-                .expect("failed to set timeout"),
-            Err(_) => {
-                let worker_scope = js_sys::global().dyn_into::<WorkerGlobalScope>().unwrap();
-                worker_scope
-                    .set_timeout_with_callback_and_timeout_and_arguments_0(
-                        &resolve,
-                        dur.as_millis() as i32,
-                    )
-                    .expect("failed to set timeout")
-            }
-        };
+        let global = js_sys::global();
+        if let Some(window) = global.dyn_ref::<Window>() {
+            window
+                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms)
+                .expect("failed to set timeout");
+        } else if let Some(scope) = global.dyn_ref::<WorkerGlobalScope>() {
+            scope
+                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms)
+                .expect("failed to set timeout");
+        } else {
+            panic!("unsupported global scope: expected Window or WorkerGlobalScope");
+        }
     }))
     .await
     .expect("failed to sleep");
