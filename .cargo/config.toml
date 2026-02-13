@@ -3,10 +3,27 @@ build-std = ['std', 'panic_abort']
 
 [build]
 target = "wasm32-unknown-unknown"
-rustflags = '-C target-feature=+atomics,+bulk-memory,+mutable-globals'
+rustflags = [
+    '-C',
+    'target-feature=+atomics,+bulk-memory,+mutable-globals',
+    '-C',
+    'link-arg=--shared-memory',
+    '-C',
+    'link-arg=--import-memory',
+    '-C',
+    'link-arg=--max-memory=4294967296',
+    '-C',
+    'link-arg=--export=__wasm_init_tls',
+    '-C',
+    'link-arg=--export=__tls_size',
+    '-C',
+    'link-arg=--export=__tls_align',
+    '-C',
+    'link-arg=--export=__tls_base',
+]
 
 [env]
 # Override this with your wasm package name (the npm/bundler module name).
 # e.g. WASMT_WASM_PKG = "my-app"
 # Defaults to CARGO_PKG_NAME if not set.
-# WASMT_WASM_PKG = "my-app"
+WASMT_WASM_PKG = "../../wasm-bindgen-test"
