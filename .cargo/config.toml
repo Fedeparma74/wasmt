@@ -23,7 +23,8 @@ rustflags = [
 ]
 
 [env]
-# Override this with your wasm package name (the npm/bundler module name).
-# e.g. WASMT_WASM_PKG = "my-app"
-# Defaults to CARGO_PKG_NAME if not set.
+# When building wasmt DIRECTLY (not as a dependency), set this to the
+# consumer's npm package name. When wasmt is a dependency, this config
+# file is NOT read — set the env var in the consumer's .cargo/config.toml
+# or via shell instead.
 WASMT_WASM_PKG = "../../wasm-bindgen-test"
