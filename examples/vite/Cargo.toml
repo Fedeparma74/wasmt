@@ -1,0 +1,27 @@
+# Empty `[workspace]` table makes this crate a standalone workspace
+# root, so `cargo metadata` (run by `wasm-pack build`) doesn't try to
+# attach it to the parent wasmt workspace at /Cargo.toml.
+[workspace]
+
+[package]
+name = "wasmt-vite-sample"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+console_error_panic_hook = "0.1"
+console_log = { version = "1", features = ["color"] }
+js-sys = "0.3"
+log = "0.4"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wasmt = { path = "../.." }
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Navigator",
+    "WorkerGlobalScope",
+    "WorkerNavigator",
+] }

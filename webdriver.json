@@ -1,0 +1,30 @@
+{
+  "goog:chromeOptions": {
+    "args": [
+      "--enable-features=SharedArrayBuffer",
+      "--no-sandbox",
+      "--headless=new"
+    ]
+  },
+  "moz:firefoxOptions": {
+    "args": ["-headless"],
+    "prefs": {
+      "javascript.options.shared_memory": true,
+      "dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled": true,
+      "browser.tabs.remote.useCrossOriginOpenerPolicy": true,
+      "browser.tabs.remote.useCrossOriginEmbedderPolicy": true,
+
+      "_comment_throttling": "Firefox throttles setTimeout in tabs flagged as 'slow' or 'background', clamping to up to 1 s. Headless tabs are technically background. Our pinned-task scheduler depends on setTimeout(0) firing in <10 ms; with throttling on, the suite intermittently stalls on tests that drive many pinned tasks. Disable every throttling knob.",
+      "dom.min_background_timeout_value": 4,
+      "dom.timeout.background_throttling_max_budget": -1,
+      "dom.timeout.foreground_throttling_max_budget": -1,
+      "dom.timeout.background_budget_regeneration_rate": 1,
+      "dom.timeout.foreground_budget_regeneration_rate": 1,
+      "dom.timeout.tracking_throttling_max_budget": -1,
+      "dom.timeout.enable_budget_timer_throttling": false,
+      "dom.timeout.throttling_delay": 0,
+      "dom.workers.throttling.enable_for_workers": false,
+      "dom.serviceWorkers.testing.enabled": false
+    }
+  }
+}
