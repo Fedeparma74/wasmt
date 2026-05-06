@@ -1,0 +1,14 @@
+{
+  "name": "wasmt-vite-sample",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "wasm-pack build --target web --out-dir pkg",
+    "dev": "npm run build:wasm && vite",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.0.10",
+    "vite-plugin-wasm": "^3.6.0"
+  }
+}
