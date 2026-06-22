@@ -71,6 +71,20 @@ extern "C" {
 
     #[wasm_bindgen(js_name = setWasmJsUrl)]
     fn js_set_wasm_js_url(url: &str);
+
+    #[wasm_bindgen(js_name = setWasmPkgName)]
+    fn js_set_wasm_pkg_name(name: &str);
+}
+
+/// Publish the wasm-bindgen package name (from the `WASMT_WASM_PKG` build
+/// env) to the JS spawner so it can derive the glue URL from its own
+/// snippet location — no DOM autodetection or app-side `setWasmJsUrl`
+/// needed for standard `wasm-bindgen --target web` layouts. No-op when the
+/// env is unset. Called once before workers are spawned.
+fn publish_wasm_pkg_name() {
+    if let Some(pkg) = option_env!("WASMT_WASM_PKG") {
+        js_set_wasm_pkg_name(pkg);
+    }
 }
 
 /// Override the URL the worker uses to import the wasm-bindgen JS
@@ -230,6 +244,16 @@ pub(crate) struct HandleInner {
 
 const PARK_EMPTY: i32 = 0;
 const PARK_NOTIFIED: i32 = 1;
+
+/// Safety-net timeout (ms) for the `Atomics.waitAsync` park used by
+/// workers that have live pinned tasks (see [`async_park`]). Every
+/// path that makes such a worker runnable already flips the parking
+/// word via [`Handle::notify_worker`], so this timeout should never
+/// be the thing that wakes a worker — it only bounds the worst case
+/// if a notify is ever missed. Kept short enough to self-heal, long
+/// enough that an idle worker wakes ~once/sec (negligible CPU) rather
+/// than busy-spinning.
+const PINNED_PARK_TIMEOUT_MS: f64 = 1000.0;
 
 /// Cheap, cloneable reference to the runtime. Workers receive one of
 /// these via shared memory; spawn callers use it to enqueue work.
@@ -664,6 +688,11 @@ impl Builder {
         // diagnostic the user can act on.
         verify_shared_memory();
 
+        // Hand the JS spawner the package name so it can locate the glue
+        // without DOM autodetection (needed under Nuxt/Vite/Webpack where
+        // the glue is loaded via dynamic `import()`).
+        publish_wasm_pkg_name();
+
         let n = self
             .worker_threads
             .unwrap_or_else(hardware_concurrency)
@@ -977,12 +1006,14 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
         if handle.inner.pinned_count[idx].load(Ordering::Acquire) > 0 {
             // Pinned tasks are alive; some may be awaiting JS Promise
             // callbacks that only dispatch when the worker yields to
-            // its event loop. `Atomics.wait` would block the loop and
-            // never let those callbacks run, so we fall back to a
-            // `setTimeout(0)` yield. Wakers from runtime-side events
-            // (e.g. `wasmt::time::sleep`) still flip the parking
-            // word, and we observe them on the next tick.
-            yield_macrotask().await;
+            // its event loop. A blocking `Atomics.wait` would freeze
+            // the loop and starve those callbacks, so we park via
+            // `Atomics.waitAsync` instead: it keeps the event loop
+            // running (callbacks fire, wakers flip the parking word)
+            // while suspending this worker — no busy-spin. This is the
+            // difference between an idle pinned worker sleeping and one
+            // pegging a CPU core cycling macrotasks.
+            async_park(ctx, handle).await;
         } else {
             sync_park(ctx, handle).await;
         }
@@ -1016,6 +1047,57 @@ async fn sync_park(ctx: &WorkerCtx, handle: &Handle) {
         return;
     }
     atomics_wait(&handle.inner.parking[idx], PARK_EMPTY);
+    handle.inner.parked[idx].store(false, Ordering::Release);
+    handle.inner.parked_count.fetch_sub(1, Ordering::AcqRel);
+    handle.inner.heartbeat.fetch_add(1, Ordering::Release);
+}
+
+/// `Atomics.waitAsync`-based park, used when this worker has live
+/// pinned (`!Send`) tasks.
+///
+/// Unlike [`sync_park`]'s blocking `Atomics.wait` — illegal to use here
+/// because it would freeze the worker's JS event loop and never let the
+/// `Promise.then` callbacks that pinned futures are awaiting dispatch —
+/// `Atomics.waitAsync` returns a Promise and lets the event loop keep
+/// running while this worker is suspended. So JS callbacks still fire
+/// (and their wakers flip the parking word through
+/// [`Handle::wake_local_task`] → [`Handle::notify_worker`]), yet the
+/// worker does *not* busy-spin. `Atomics.notify` wakes `waitAsync`
+/// waiters exactly as it wakes `Atomics.wait` waiters, so the existing
+/// notify path needs no changes.
+///
+/// A finite timeout ([`PINNED_PARK_TIMEOUT_MS`]) bounds the wait purely
+/// as a safety net; on expiry we just fall through and re-poll.
+async fn async_park(ctx: &WorkerCtx, handle: &Handle) {
+    let idx = ctx.index;
+    let prev = handle.inner.parking[idx].swap(PARK_EMPTY, Ordering::AcqRel);
+    if prev == PARK_NOTIFIED {
+        return;
+    }
+    // Announce parked state before the re-check, same ordering as
+    // `sync_park` (parked[idx] Released before parked_count bump).
+    handle.inner.parked[idx].store(true, Ordering::Release);
+    handle.inner.parked_count.fetch_add(1, Ordering::AcqRel);
+    // Re-check every source of work to close the park/produce race.
+    // NB: unlike `sync_park` we do NOT bail on `pinned_count > 0` —
+    // parking *with* pinned tasks alive is the entire purpose here.
+    if !handle.inner.injector.is_empty()
+        || !ctx.local_is_empty()
+        || !handle.inner.pinned_jobs[idx].is_empty()
+        || !handle.inner.pinned_ready[idx].is_empty()
+        || handle.inner.shutdown.load(Ordering::Acquire)
+        || any_stealer_has_work(handle)
+    {
+        handle.inner.parked[idx].store(false, Ordering::Release);
+        handle.inner.parked_count.fetch_sub(1, Ordering::AcqRel);
+        return;
+    }
+    wait_async(
+        &handle.inner.parking[idx],
+        PARK_EMPTY,
+        PINNED_PARK_TIMEOUT_MS,
+    )
+    .await;
     handle.inner.parked[idx].store(false, Ordering::Release);
     handle.inner.parked_count.fetch_sub(1, Ordering::AcqRel);
     handle.inner.heartbeat.fetch_add(1, Ordering::Release);
@@ -1332,6 +1414,64 @@ fn atomics_wait(slot: &AtomicI32, expected: i32) {
 fn atomics_notify(slot: &AtomicI32, count: u32) {
     unsafe {
         core::arch::wasm32::memory_atomic_notify(slot as *const AtomicI32 as *mut i32, count);
+    }
+}
+
+/// Async, non-blocking counterpart to [`atomics_wait`]: park on `slot`
+/// via `Atomics.waitAsync` until it's notified or `timeout_ms` elapses.
+///
+/// `Atomics.waitAsync` (unlike `Atomics.wait`) does not block the
+/// calling thread's JS event loop — it returns a Promise — so it is
+/// the only primitive that lets a worker sleep on its parking word
+/// *while still draining the JS callbacks its pinned futures depend
+/// on*. The same `Atomics.notify` that wakes `atomics_wait` resolves
+/// this Promise.
+///
+/// Resolves immediately if `slot` no longer holds `expected`
+/// ("not-equal"), on notify, on timeout, or — defensively — if the
+/// engine lacks `Atomics.waitAsync` (every cross-origin-isolated
+/// engine that ships `SharedArrayBuffer` also ships `waitAsync`, so
+/// the macrotask fallback is effectively dead code kept for safety).
+async fn wait_async(slot: &AtomicI32, expected: i32, timeout_ms: f64) {
+    // `Int32Array` over the live wasm memory buffer (a
+    // SharedArrayBuffer in the multithreaded build). Built fresh each
+    // call so a `memory.grow` between parks can't leave us viewing a
+    // stale buffer. `slot`'s linear address is stable (it lives in a
+    // pinned `Arc<HandleInner>`); the array index is that byte offset
+    // divided by 4.
+    let memory = wasm_bindgen::memory();
+    let buffer = match js_sys::Reflect::get(&memory, &"buffer".into()) {
+        Ok(b) => b,
+        Err(_) => {
+            yield_macrotask().await;
+            return;
+        }
+    };
+    let array = js_sys::Int32Array::new(&buffer);
+    let index = (slot as *const AtomicI32 as u32) / 4;
+
+    match js_sys::Atomics::wait_async_with_timeout(&array, index, expected, timeout_ms) {
+        Ok(result) => {
+            // `{ async: bool, value: Promise | "not-equal" | "timed-out" }`.
+            // When `async` is false the wait already settled
+            // synchronously (the word changed) — return and re-poll.
+            let is_async = js_sys::Reflect::get(&result, &"async".into())
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if is_async
+                && let Ok(promise) = js_sys::Reflect::get(&result, &"value".into())
+                    .and_then(|v| v.dyn_into::<js_sys::Promise>())
+            {
+                let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+            }
+        }
+        Err(_) => {
+            // `Atomics.waitAsync` unavailable on this engine — degrade
+            // to the macrotask yield (busy but correct; keeps the event
+            // loop live).
+            yield_macrotask().await;
+        }
     }
 }
 
