@@ -726,13 +726,14 @@ impl Interval {
             }
             MissedTickBehavior::Skip => {
                 // Find the next scheduled deadline strictly in the
-                // future. `interval()` / `interval_at()` assert that
-                // period > 0 at construction, so the divisor here is
-                // guaranteed non-zero.
+                // future. NB: `interval()` only asserts the `Duration`
+                // is non-zero — a sub-millisecond period (e.g. 500µs)
+                // still has `as_millis() == 0`, so we must guard the
+                // divisor explicitly or this divides by zero and traps.
                 let mut next = self.next + self.period;
                 if next <= now {
                     let behind_ms = now.ms.saturating_sub(next.ms);
-                    let period_ms = self.period.as_millis() as u64;
+                    let period_ms = (self.period.as_millis() as u64).max(1);
                     // Round up to the next multiple of period.
                     let skips = behind_ms / period_ms + 1;
                     next.ms = next.ms.saturating_add(skips.saturating_mul(period_ms));

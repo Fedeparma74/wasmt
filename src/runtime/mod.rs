@@ -907,11 +907,22 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
             job.run();
         }
 
-        // 1. LIFO slot.
+        // 1. LIFO slot — preserves message-passing locality, but
+        //    budget-limited so a self-rewaking task can't monopolise
+        //    the worker and starve the local deque (see `LIFO_BUDGET`).
         if let Some(t) = ctx.lifo.take() {
-            poll_task(t, ctx);
-            yield_for_pinned(idx, handle).await;
-            continue;
+            if ctx.lifo_polls.get() >= scheduler::LIFO_BUDGET && !ctx.local.is_empty() {
+                // Budget spent and siblings are queued: demote this
+                // task to the back of the local deque and fall through
+                // to serve the deque (FIFO) so queued tasks progress.
+                ctx.local.push(t);
+                ctx.lifo_polls.set(0);
+            } else {
+                ctx.lifo_polls.set(ctx.lifo_polls.get() + 1);
+                poll_task(t, ctx);
+                yield_for_pinned(idx, handle).await;
+                continue;
+            }
         }
 
         // 2. Periodic injector poll for fairness.
@@ -920,6 +931,7 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
         if tick.is_multiple_of(GLOBAL_QUEUE_INTERVAL + 1)
             && let Some(t) = handle.inner.injector.pop()
         {
+            ctx.lifo_polls.set(0);
             poll_task(t, ctx);
             yield_for_pinned(idx, handle).await;
             continue;
@@ -936,6 +948,7 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
 
         // 4. Local deque.
         if let Some(t) = ctx.local.pop() {
+            ctx.lifo_polls.set(0);
             poll_task(t, ctx);
             yield_for_pinned(idx, handle).await;
             continue;
@@ -943,6 +956,7 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
 
         // 5. Global injector.
         if let Some(t) = handle.inner.injector.pop() {
+            ctx.lifo_polls.set(0);
             poll_task(t, ctx);
             yield_for_pinned(idx, handle).await;
             continue;
@@ -950,6 +964,7 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
 
         // 6. Steal from siblings.
         if let Some(t) = scheduler::try_steal(ctx, &handle.inner.stealers) {
+            ctx.lifo_polls.set(0);
             poll_task(t, ctx);
             yield_for_pinned(idx, handle).await;
             continue;

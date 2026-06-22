@@ -611,8 +611,8 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn sync_mpsc_smoke() {
-        // wasmt::sync re-exports tokio::sync; just confirm a channel
-        // round-trips through the runtime.
+        // wasmt::sync provides native, main-thread-safe channels; just
+        // confirm one round-trips through the runtime.
         let (tx, mut rx) = crate::sync::mpsc::channel::<u32>(4);
         spawn(async move {
             for i in 0..4u32 {

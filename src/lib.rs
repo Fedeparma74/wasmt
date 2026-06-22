@@ -66,24 +66,10 @@ compile_error!(
 );
 
 pub mod runtime;
+pub mod sync;
 pub mod task;
 pub mod time;
 pub mod utils;
-
-/// Re-export of `tokio::sync` (Mutex, RwLock, Notify, Semaphore,
-/// OnceCell, mpsc, oneshot, broadcast, watch, ...).
-///
-/// Tokio's sync primitives are runtime-agnostic — they don't require
-/// a Tokio runtime to drive them, just any executor that can poll
-/// futures. They compile cleanly on `wasm32-unknown-unknown` with the
-/// atomics target feature, so re-exporting them under
-/// [`crate::sync`] gives you familiar Tokio APIs without the
-/// indirect dependency.
-///
-/// Disable the `sync` Cargo feature if you want to bring in `tokio`
-/// (or any other primitive crate) yourself.
-#[cfg(feature = "sync")]
-pub use tokio::sync;
 
 pub use runtime::{Builder, Handle, Runtime, block_on, set_wasm_js_url};
 pub use task::{

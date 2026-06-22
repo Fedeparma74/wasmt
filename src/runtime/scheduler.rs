@@ -36,7 +36,19 @@ pub(crate) struct WorkerCtx {
     pub lifo: Cell<Option<Arc<Task>>>,
     /// Tick counter for periodic injector polling (fairness).
     pub tick: Cell<u32>,
+    /// Consecutive polls served straight from the LIFO slot. Capped at
+    /// [`LIFO_BUDGET`] so a task that re-wakes itself every poll (e.g.
+    /// `yield_now` in a loop, a hot self-notifying `Stream`) cannot
+    /// monopolise the worker and starve siblings waiting in the local
+    /// deque. Reset whenever a task is served from any other source.
+    pub lifo_polls: Cell<u32>,
 }
+
+/// Max consecutive LIFO-slot polls before the occupant is demoted to
+/// the back of the local deque so queued siblings get a turn. Keeps
+/// the message-passing locality win of the LIFO slot while bounding
+/// worst-case starvation to `LIFO_BUDGET` polls.
+pub(crate) const LIFO_BUDGET: u32 = 16;
 
 impl WorkerCtx {
     pub fn new(handle: Handle, index: usize, local: Worker<Arc<Task>>) -> Self {
@@ -46,6 +58,7 @@ impl WorkerCtx {
             local,
             lifo: Cell::new(None),
             tick: Cell::new(0),
+            lifo_polls: Cell::new(0),
         }
     }
 
