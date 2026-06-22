@@ -8,6 +8,14 @@ const WORKER_URL = new URL('./worker.js', SPAWNER_URL);
 
 let cachedWasmJsUrl = null;
 
+// wasm-bindgen package name (from the `WASMT_WASM_PKG` build env), set
+// from Rust via `setWasmPkgName` before the first spawn. Lets us derive
+// the glue URL purely from this snippet's own location — no DOM walking,
+// no app-side plumbing — for the standard wasm-bindgen `--target web`
+// layout where the glue sits at `<glue-dir>/<pkg>.js` and this snippet
+// at `<glue-dir>/snippets/<crate>-<hash>/workerSpawner.js`.
+let wasmPkgName = null;
+
 /**
  * Override the wasm-bindgen-glue URL the worker imports. Call this
  * once if autodetection picks the wrong file for your bundle.
@@ -16,6 +24,16 @@ let cachedWasmJsUrl = null;
  */
 export function setWasmJsUrl(url) {
     cachedWasmJsUrl = String(url);
+}
+
+/**
+ * Record the wasm-bindgen package name so the glue URL can be derived
+ * relative to this snippet. Called from Rust with `WASMT_WASM_PKG`.
+ *
+ * @param {string} name
+ */
+export function setWasmPkgName(name) {
+    wasmPkgName = String(name);
 }
 
 // Filenames that should never be picked as the wasm-bindgen glue
@@ -61,6 +79,24 @@ function detectWasmJsUrl() {
     if (typeof globalThis !== 'undefined' && globalThis.__wasmt_wasm_js_url) {
         cachedWasmJsUrl = String(globalThis.__wasmt_wasm_js_url);
         return cachedWasmJsUrl;
+    }
+
+    // Primary auto path: derive the glue URL from this snippet's own
+    // location plus the package name (`WASMT_WASM_PKG`). wasm-bindgen
+    // `--target web` always emits `<glue-dir>/<pkg_snake>.js` with our
+    // snippets under `<glue-dir>/snippets/<crate>-<hash>/`, so the glue
+    // is `../../<pkg_snake>.js` from here. This needs no DOM and works
+    // under bundlers (Nuxt/Vite/Webpack) that load the glue via dynamic
+    // `import()` rather than a discoverable `<script type=module>`.
+    if (wasmPkgName) {
+        const pkgSnake = wasmPkgName.replace(/-/g, '_');
+        const resolved = new URL(`../../${pkgSnake}.js`, SPAWNER_URL).href;
+        // Guard against a degenerate name that would resolve back to one
+        // of our own snippets.
+        if (!NOT_GLUE.test(resolved)) {
+            cachedWasmJsUrl = resolved;
+            return resolved;
+        }
     }
 
     // From main: walk every <script type=module>. Try in order:
