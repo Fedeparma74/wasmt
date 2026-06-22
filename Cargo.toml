@@ -15,7 +15,6 @@ console_error_panic_hook = "0.1"
 crossbeam-deque = "0.8"
 crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
 futures = "0.3"
-tokio = { version = "1", default-features = false, features = ["sync"], optional = true }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
@@ -31,15 +30,6 @@ web-sys = { version = "0.3", features = [
   "ErrorEvent",
   "console",
 ] }
-
-[features]
-default = ["sync"]
-# Re-export `tokio::sync::*` under `wasmt::sync`. Tokio's sync
-# primitives (Mutex, Notify, mpsc, oneshot, broadcast, watch, …) are
-# runtime-agnostic and build cleanly on `wasm32+atomics`. Disable
-# this feature if you'd rather depend on `tokio` directly or pull in
-# something else.
-sync = ["dep:tokio"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

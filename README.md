@@ -42,7 +42,7 @@ async fn main() {
     });
     log::info!("blocking returned {}", h.join().await.unwrap());
 
-    // Sync primitives are re-exported from tokio::sync.
+    // Native, main-thread-safe sync primitives (tokio-compatible API).
     let (tx, mut rx) = wasmt::sync::mpsc::channel::<u32>(8);
     wasmt::spawn(async move { tx.send(99).await.unwrap(); });
     log::info!("got {}", rx.recv().await.unwrap());
@@ -80,7 +80,7 @@ rustflags = [
 Pages must be served with these headers so `SharedArrayBuffer` is
 available:
 
-```
+```text
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
@@ -102,6 +102,7 @@ ships those works:
 | Mobile Chrome / Firefox  | follows desktop |                                                                                                                      |
 
 The runtime depends on:
+
 - `WebAssembly.Memory` with `shared: true` (cross-origin isolated)
 - Module-type Web Workers (`new Worker(URL, {type: 'module'})`)
 - `Atomics.wait` / `Atomics.notify` (and the wasm `memory.atomic.*` ops)
@@ -187,11 +188,22 @@ while let Some((id, result)) = set.join_next().await {
 
 Drops cancel pending tasks (matches Tokio).
 
-### `wasmt::sync` (feature-gated, on by default)
+### `wasmt::sync`
 
-Re-exports `tokio::sync` — `Mutex`, `RwLock`, `Notify`, `Semaphore`,
-`OnceCell`, `mpsc`, `oneshot`, `broadcast`, `watch`. Same source as
-on native, no extra Tokio runtime required.
+Native async sync primitives with a Tokio-compatible API: `Mutex`,
+`RwLock`, `Notify`, `Semaphore`, `OnceCell`, `Barrier`, `mpsc`,
+`oneshot`, `broadcast`, `watch`.
+
+These are **not** re-exported from `tokio::sync` (and you should not use
+`tokio::sync` directly here). On `wasm32` with `+atomics`, a *contended*
+`std::sync::Mutex` blocks via `Atomics.wait`, which is **illegal on the
+browser main thread** and traps the wasm instance — and every
+`tokio::sync` primitive (plus `futures::lock`, `async-lock`,
+`event-listener`, …) guards its internal waiter list with a
+`std::sync::Mutex`. wasmt's versions instead guard their state with a
+non-parking spinlock and wait on lock-free `AtomicWaker`s, so they never
+call `Atomics.wait` and are safe to use from any thread, including main,
+under arbitrary contention.
 
 ### Filling `std` gaps on `wasm32-unknown-unknown`
 

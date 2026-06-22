@@ -1,3 +1,5 @@
 /pkg
-/target
+**/target
+**/node_modules
 Cargo.lock
+pnpm-lock.yaml

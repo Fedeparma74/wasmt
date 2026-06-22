@@ -58,7 +58,7 @@ pub async fn start() {
     }
     log::info!("sum of squares 0..8 = {sum}");
 
-    // 6. mpsc channel via wasmt::sync (re-export of tokio::sync).
+    // 6. mpsc channel via wasmt::sync (native, main-thread-safe).
     let (tx, mut rx) = wasmt::sync::mpsc::channel::<&'static str>(4);
     wasmt::spawn(async move {
         for msg in ["alpha", "beta", "gamma"] {
