@@ -37,9 +37,12 @@ pub mod blocking;
 pub mod cross;
 mod local;
 pub(crate) mod main_bus;
+pub(crate) mod main_exec;
 mod scheduler;
 pub mod timer;
 mod worker_entry;
+
+pub use main_exec::spawn_on_main;
 
 use std::future::Future;
 use std::pin::Pin;

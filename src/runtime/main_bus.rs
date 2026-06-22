@@ -89,6 +89,7 @@ pub fn install_listener(worker: &web_sys::Worker, on_death: Option<DeathCallback
                 }
             }
             "wasmt_timer_kick" => __wasmt_timer_kick(),
+            "wasmt_main_job" => super::main_exec::drain_main_jobs(),
             _ => {}
         }
     });

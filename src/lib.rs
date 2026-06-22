@@ -71,7 +71,7 @@ pub mod task;
 pub mod time;
 pub mod utils;
 
-pub use runtime::{Builder, Handle, Runtime, block_on, set_wasm_js_url};
+pub use runtime::{Builder, Handle, Runtime, block_on, set_wasm_js_url, spawn_on_main};
 pub use task::{
     AbortHandle, JoinError, JoinHandle, JoinSet, LocalJoinHandle, spawn, spawn_blocking,
     spawn_local, spawn_pinned, yield_now,
