@@ -122,10 +122,18 @@ wasmt::spawn(future)                                 // Send + 'static
 wasmt::spawn_blocking(closure)                       // Send + 'static
 wasmt::spawn_local(future)                           // 'static, no Send
 wasmt::spawn_pinned(|| async { ... })                // !Send future on a pool worker
+wasmt::spawn_on_main(|| async { ... })               // future pinned to the main thread
 wasmt::yield_now().await                             // cooperative yield
 ```
 
-All four return a `JoinHandle<T>` that is `Send` when `T: Send`.
+`spawn_on_main` runs its future on the **main thread** from anywhere —
+use it to reach main-thread-only Web APIs (DOM, `window`,
+`localStorage`, `history`, …) from a pool or `spawn_blocking` worker.
+Build any `JsValue`/`web-sys` handles *inside* the closure (it runs on
+main's realm); the returned `T` must be `Send` so it can travel back to
+the caller.
+
+All return a `JoinHandle<T>` that is `Send` when `T: Send`.
 `JoinHandle` implements `Future`, so you can `.await` it directly or
 call `.join().await` for parity with Tokio.
 
