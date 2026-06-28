@@ -4,7 +4,6 @@
 // next to this file) is the actual worker entry.
 
 const SPAWNER_URL = new URL(import.meta.url);
-const WORKER_URL = new URL('./worker.js', SPAWNER_URL);
 
 let cachedWasmJsUrl = null;
 
@@ -81,13 +80,28 @@ function detectWasmJsUrl() {
         return cachedWasmJsUrl;
     }
 
-    // Primary auto path: derive the glue URL from this snippet's own
-    // location plus the package name (`WASMT_WASM_PKG`). wasm-bindgen
-    // `--target web` always emits `<glue-dir>/<pkg_snake>.js` with our
-    // snippets under `<glue-dir>/snippets/<crate>-<hash>/`, so the glue
-    // is `../../<pkg_snake>.js` from here. This needs no DOM and works
-    // under bundlers (Nuxt/Vite/Webpack) that load the glue via dynamic
-    // `import()` rather than a discoverable `<script type=module>`.
+    // Bundler path (Vite / Nuxt / Webpack / Rollup): the bundler INLINES this
+    // snippet into the wasm-bindgen glue's chunk and flattens away the
+    // `snippets/<crate>-<hash>/` directory — so this snippet's own module URL
+    // already points AT the glue chunk. Importing it yields `default` (the
+    // `__wbg_init`) plus `runtime_worker_main`/`blocking_pool_main`, exactly
+    // what the worker needs. Detect that flattened layout by the ABSENCE of the
+    // wasm-bindgen `/snippets/` path segment and import this very URL.
+    //
+    // (The `../../<pkg>.js` derivation below assumes the `snippets/` directory
+    // survives next to the glue. Bundlers do NOT preserve it — they emit a
+    // single hashed chunk like `_nuxt/<hash>.js` — so that derivation pointed
+    // workers at a non-existent file in production builds, which then 404'd to
+    // the SPA's index.html. This branch is the fix.)
+    if (!/\/snippets\//.test(SPAWNER_URL.pathname)) {
+        cachedWasmJsUrl = SPAWNER_URL.href;
+        return cachedWasmJsUrl;
+    }
+
+    // Plain wasm-bindgen `--target web` layout (and dev servers that preserve
+    // it): this snippet sits at `<glue-dir>/snippets/<crate>-<hash>/
+    // workerSpawner.js` and the glue at `<glue-dir>/<pkg_snake>.js`, so the glue
+    // is `../../<pkg_snake>.js` from here. Needs no DOM.
     if (wasmPkgName) {
         const pkgSnake = wasmPkgName.replace(/-/g, '_');
         const resolved = new URL(`../../${pkgSnake}.js`, SPAWNER_URL).href;
@@ -170,7 +184,17 @@ function detectWasmJsUrl() {
 }
 
 function newWorker() {
-    return new Worker(WORKER_URL, { type: 'module', name: 'wasmt-worker' });
+    // Use the literal `new URL('./worker.js', import.meta.url)` form INLINE in
+    // the `new Worker(...)` call. Bundlers (Vite/Nuxt, Webpack 5) statically
+    // detect exactly this pattern and emit `worker.js` into the build, rewriting
+    // the URL to the emitted (hashed) asset.
+    // Plain wasm-bindgen `--target web` and dev servers resolve this same
+    // expression correctly (worker.js sits next to this snippet), so the literal
+    // form is correct everywhere and bundler-friendly where the variable was not.
+    return new Worker(new URL('./worker.js', import.meta.url), {
+        type: 'module',
+        name: 'wasmt-worker',
+    });
 }
 
 /**
