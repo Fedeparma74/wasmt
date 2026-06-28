@@ -1,0 +1,75 @@
+// Long-lived worker entry — BUNDLER / known-package build.
+//
+// GENERATED into `worker.js` by `build.rs` when `WASMT_WASM_PKG` is set: the
+// glue-import specifier below is filled in with `../../<pkg_snake>.js`. Do not
+// edit `worker.js` by hand — edit this template instead.
+//
+// Unlike the runtime variant (`worker.runtime.js`), this STATICALLY imports the
+// glue. A bundler (Vite / Webpack / Rollup) then bakes a DECOUPLED copy of the
+// glue into THIS worker chunk — so the worker never imports the app's main
+// chunk, which may pull in bundler-internal virtual modules (e.g. Nuxt's
+// `#entry`) that don't resolve in a Worker. A plain `--target web` host resolves
+// the same explicit relative file directly. One file, works on dev servers,
+// production bundles, and with no bundler — no runtime glue-URL detection, no
+// app-side override.
+import * as wasmPkg from '__WASMT_GLUE_MODULE__';
+
+// wasm-bindgen's generated glue makes bare references to worker-absent globals
+// (`document`, `SharedWorker`, `window`) from inside its import shims. The glue
+// has no TOP-LEVEL access to them, so it is safe to evaluate via the (hoisted)
+// static import above; these no-op shims are in place before `init()` first
+// runs and any shim is actually touched.
+if (typeof SharedWorker === 'undefined') self.SharedWorker = class {};
+if (typeof document === 'undefined') {
+    const noop = new Proxy(function () {}, {
+        get() { return noop; },
+        set() { return true; },
+        apply() { return noop; },
+        construct() { return noop; },
+    });
+    self.document = noop;
+}
+if (typeof window === 'undefined') self.window = self;
+
+self.onmessage = async event => {
+    const msg = event.data;
+    let initialised;
+    try {
+        const initFn = wasmPkg.default || wasmPkg.__wbg_init || wasmPkg.init;
+        if (typeof initFn !== 'function') {
+            throw new Error(
+                '[wasmt worker] statically-imported glue exports no init '
+                + 'function; exports = ' + Object.keys(wasmPkg).join(',')
+            );
+        }
+        initialised = await initFn(msg.module, msg.memory);
+        switch (msg.kind) {
+            case 'runtime':
+                // Async: the worker yields to the JS event loop while pinned
+                // tasks are alive so their `Promise.then` callbacks fire.
+                // Resolves on shutdown.
+                await wasmPkg.runtime_worker_main(msg.handlePtr);
+                break;
+            case 'blocking-pool':
+                wasmPkg.blocking_pool_main(msg.poolPtr);
+                break;
+            default:
+                throw new Error('[wasmt worker] unknown message kind: ' + msg.kind);
+        }
+    } catch (err) {
+        console.error('[wasmt worker] failed:', err);
+        setTimeout(() => { throw err; });
+        return;
+    } finally {
+        try { initialised && initialised.__wbindgen_thread_destroy(); } catch (_) {}
+        close();
+    }
+};
+
+self.onerror = err => {
+    console.error('[wasmt worker] error:', err);
+};
+
+// Marker so wasm-bindgen copies this file into its JS output bundle alongside
+// workerSpawner.js. Imported from Rust via `extern "C"`.
+export function includeWorker() { /* intentionally empty */ }

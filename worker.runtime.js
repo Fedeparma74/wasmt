@@ -8,9 +8,9 @@
 // bare references to globals that don't exist in a dedicated worker:
 // `SharedWorker`, `document`, etc. Stub them with no-op shims so
 // `instanceof` / property-access don't throw ReferenceError.
-if (typeof SharedWorker === 'undefined') self.SharedWorker = class {};
+if (typeof SharedWorker === 'undefined') self.SharedWorker = class { };
 if (typeof document === 'undefined') {
-    const noop = new Proxy(function () {}, {
+    const noop = new Proxy(function () { }, {
         get() { return noop; },
         set() { return true; },
         apply() { return noop; },
@@ -28,6 +28,17 @@ self.onmessage = async event => {
     self.__wasmt_wasm_js_url = msg.wasmJsUrl;
     let initialised;
     try {
+        if (!msg.wasmJsUrl) {
+            // The spawner couldn't autodetect the glue URL (it passes null
+            // rather than aborting the spawn, so the bundled worker variant
+            // isn't held hostage to detection). The runtime variant needs it.
+            throw new Error(
+                '[wasmt] could not autodetect the wasm-bindgen JS glue URL. ' +
+                'Call setWasmJsUrl(url) or set globalThis.__wasmt_wasm_js_url ' +
+                'before the first spawn, or build with WASMT_WASM_PKG set so the ' +
+                'worker imports the glue statically.'
+            );
+        }
         const wasmPkg = await import(msg.wasmJsUrl);
         const initFn = wasmPkg.default || wasmPkg.__wbg_init || wasmPkg.init;
         if (typeof initFn !== 'function') {
@@ -55,7 +66,7 @@ self.onmessage = async event => {
         setTimeout(() => { throw err; });
         return;
     } finally {
-        try { initialised && initialised.__wbindgen_thread_destroy(); } catch (_) {}
+        try { initialised && initialised.__wbindgen_thread_destroy(); } catch (_) { }
         close();
     }
 };

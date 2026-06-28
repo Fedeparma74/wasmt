@@ -113,6 +113,25 @@ function detectWasmJsUrl() {
         }
     }
 
+    // Derive the glue URL from the already-loaded wasm binary. wasm-bindgen
+    // `--target web` (and the wasm-bindgen-test harness) fetch the module from
+    // `<base>_bg.wasm` and place the JS glue beside it as `<base>.js`. That fetch
+    // is in the Resource Timing buffer, so we recover the glue URL with no DOM
+    // walk and no synchronous XHR.
+    if (typeof performance !== 'undefined' && performance.getEntriesByType) {
+        for (const entry of performance.getEntriesByType('resource')) {
+            const name = entry.name || '';
+            if (!/\.wasm(?=$|[?#])/i.test(name)) continue;
+            const glue = name
+                .replace(/_bg\.wasm(?=$|[?#])/i, '.js')
+                .replace(/\.wasm(?=$|[?#])/i, '.js');
+            if (glue !== name && !NOT_GLUE.test(glue)) {
+                cachedWasmJsUrl = glue;
+                return glue;
+            }
+        }
+    }
+
     // From main: walk every <script type=module>. Try in order:
     //   1. If the script tag has inline content (no `src`), inspect it.
     //   2. If `src`, sync-fetch and inspect — but bounded by a
@@ -197,6 +216,21 @@ function newWorker() {
     });
 }
 
+// Glue URL for the worker message. The BUNDLED worker variant (build.rs, with
+// `WASMT_WASM_PKG` set) STATICALLY imports the glue and ignores this value, so a
+// detection failure must NOT abort the spawn. Only the runtime worker reads it,
+// and it raises its own clear error if it is missing. (Without this, a bundled
+// build on a dev server — snippet under `/snippets/`, package name not yet
+// published, no discoverable static glue import for the DOM walk — would throw
+// here and fail every spawn.)
+function detectWasmJsUrlOrNull() {
+    try {
+        return detectWasmJsUrl();
+    } catch (_) {
+        return null;
+    }
+}
+
 /**
  * Spawn a long-lived blocking-pool worker. The worker boots the wasm
  * module and enters `blocking_pool_main(poolPtr)`, draining the pool's
@@ -207,7 +241,7 @@ export function spawnBlockingPoolWorker(module, memory, poolPtr) {
     worker.postMessage({
         kind: 'blocking-pool',
         module, memory, poolPtr,
-        wasmJsUrl: detectWasmJsUrl(),
+        wasmJsUrl: detectWasmJsUrlOrNull(),
     });
     return worker;
 }
@@ -221,7 +255,7 @@ export function spawnRuntimeWorker(module, memory, handlePtr) {
     worker.postMessage({
         kind: 'runtime',
         module, memory, handlePtr,
-        wasmJsUrl: detectWasmJsUrl(),
+        wasmJsUrl: detectWasmJsUrlOrNull(),
     });
     return worker;
 }
