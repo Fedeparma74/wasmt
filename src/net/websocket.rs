@@ -2,26 +2,67 @@
 //! [`connect`] / [`connect_with_protocols`].
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Context, Poll, ready};
+use std::task::{Context, Poll};
 
-use futures::channel::{mpsc, oneshot};
+use futures::channel::oneshot;
 use futures::sink::Sink;
 use futures::stream::{FusedStream, Stream};
+use futures::task::AtomicWaker;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::JsValue;
 
 use super::{CloseFrame, Error, Message, State};
 
-/// What the event closures push into the receive channel. Decoupled from
-/// [`Message`] so the close/error events can carry their own variants without
-/// being mistaken for data frames.
+/// What the event closures push into the [`Inbox`]. Decoupled from [`Message`]
+/// so the close/error events can carry their own variants without being
+/// mistaken for data frames.
 enum StreamMessage {
     Message(Message),
     Close(CloseFrame),
     Error(String),
+}
+
+/// Single-realm receive queue shared between the event closures (producers)
+/// and the [`Stream`] (consumer). The socket is `!Send` and JS is
+/// single-threaded — closures never preempt the consumer — so a plain
+/// `RefCell<VecDeque>` + [`AtomicWaker`] is sound and avoids the per-message
+/// heap node of a general-purpose MPSC channel. FIFO push/pop preserves
+/// arrival order.
+#[derive(Default)]
+struct Inbox {
+    queue: RefCell<VecDeque<StreamMessage>>,
+    waker: AtomicWaker,
+}
+
+impl Inbox {
+    fn pop(&self) -> Option<StreamMessage> {
+        self.queue.borrow_mut().pop_front()
+    }
+
+    /// Producer side: enqueue and wake the consumer if it is parked.
+    fn push(&self, msg: StreamMessage) {
+        self.queue.borrow_mut().push_back(msg);
+        self.waker.wake();
+    }
+
+    /// Consumer side: pop one item, or register `cx` and return `Pending`.
+    fn poll(&self, cx: &Context<'_>) -> Poll<StreamMessage> {
+        if let Some(m) = self.pop() {
+            return Poll::Ready(m);
+        }
+        self.waker.register(cx.waker());
+        // Re-check after registering so a push between the first pop and the
+        // register is never missed (defensive; on one realm there is no such
+        // interleave, but it mirrors the crate's other waker users).
+        match self.pop() {
+            Some(m) => Poll::Ready(m),
+            None => Poll::Pending,
+        }
+    }
 }
 
 /// Shared one-shot slot resolving the `connect` future. Whichever of the
@@ -47,7 +88,7 @@ struct WsClosures {
 /// [module docs](crate::net)).
 pub struct WebSocketStream {
     ws: web_sys::WebSocket,
-    receiver: mpsc::UnboundedReceiver<StreamMessage>,
+    inbox: Rc<Inbox>,
     /// Set once a `Close`/`Error` item has been yielded; the stream then ends.
     terminated: bool,
     _closures: WsClosures,
@@ -85,10 +126,10 @@ pub async fn connect_with_protocols(
 async fn setup(ws: web_sys::WebSocket) -> Result<WebSocketStream, Error> {
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
-    let (tx, receiver) = mpsc::unbounded::<StreamMessage>();
+    let inbox = Rc::new(Inbox::default());
     let (open_tx, open_rx) = oneshot::channel::<Result<(), Error>>();
     // Fired once by whichever of open/error wins; `take()` makes the loser a
-    // no-op and lets a post-open `error` fall through to the data channel.
+    // no-op and lets a post-open `error` fall through to the inbox.
     let open_slot: ConnectSlot = Rc::new(RefCell::new(Some(open_tx)));
 
     let open_slot_open = open_slot.clone();
@@ -98,7 +139,7 @@ async fn setup(ws: web_sys::WebSocket) -> Result<WebSocketStream, Error> {
         }
     });
 
-    let tx_msg = tx.clone();
+    let inbox_msg = inbox.clone();
     let on_message =
         Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
             let data = e.data();
@@ -112,10 +153,10 @@ async fn setup(ws: web_sys::WebSocket) -> Result<WebSocketStream, Error> {
             } else {
                 return;
             };
-            let _ = tx_msg.unbounded_send(StreamMessage::Message(msg));
+            inbox_msg.push(StreamMessage::Message(msg));
         });
 
-    let tx_close = tx.clone();
+    let inbox_close = inbox.clone();
     let open_slot_close = open_slot.clone();
     let on_close = Closure::<dyn FnMut(web_sys::CloseEvent)>::new(move |e: web_sys::CloseEvent| {
         let frame = CloseFrame {
@@ -131,12 +172,12 @@ async fn setup(ws: web_sys::WebSocket) -> Result<WebSocketStream, Error> {
                 frame.code, frame.reason
             ))));
         } else {
-            let _ = tx_close.unbounded_send(StreamMessage::Close(frame));
+            inbox_close.push(StreamMessage::Close(frame));
         }
     });
 
     let open_slot_err = open_slot.clone();
-    let tx_err = tx.clone();
+    let inbox_err = inbox.clone();
     let on_error = Closure::<dyn FnMut(JsValue)>::new(move |_e: JsValue| {
         // The WebSocket `error` event is intentionally information-poor for
         // security reasons, so there is nothing useful to extract from `_e`.
@@ -146,7 +187,7 @@ async fn setup(ws: web_sys::WebSocket) -> Result<WebSocketStream, Error> {
             let _ = open.send(Err(Error::ConnectionError(msg)));
         } else {
             // Post-open failure → surface to the stream.
-            let _ = tx_err.unbounded_send(StreamMessage::Error(msg));
+            inbox_err.push(StreamMessage::Error(msg));
         }
     });
 
@@ -157,7 +198,7 @@ async fn setup(ws: web_sys::WebSocket) -> Result<WebSocketStream, Error> {
 
     let stream = WebSocketStream {
         ws,
-        receiver,
+        inbox,
         terminated: false,
         _closures: WsClosures {
             _on_open: on_open,
@@ -230,18 +271,17 @@ impl Stream for WebSocketStream {
         if self.terminated {
             return Poll::Ready(None);
         }
-        // `WebSocketStream` is `Unpin`; deref through the `Pin` without unsafe.
-        match ready!(Pin::new(&mut self.receiver).poll_next(cx)) {
-            Some(StreamMessage::Message(m)) => Poll::Ready(Some(Ok(m))),
-            Some(StreamMessage::Close(f)) => {
+        match self.inbox.poll(cx) {
+            Poll::Ready(StreamMessage::Message(m)) => Poll::Ready(Some(Ok(m))),
+            Poll::Ready(StreamMessage::Close(f)) => {
                 self.terminated = true;
                 Poll::Ready(Some(Ok(Message::Close(Some(f)))))
             }
-            Some(StreamMessage::Error(m)) => {
+            Poll::Ready(StreamMessage::Error(m)) => {
                 self.terminated = true;
                 Poll::Ready(Some(Err(Error::ConnectionError(m))))
             }
-            None => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
