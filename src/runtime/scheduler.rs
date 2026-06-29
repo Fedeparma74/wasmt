@@ -42,6 +42,13 @@ pub(crate) struct WorkerCtx {
     /// monopolise the worker and starve siblings waiting in the local
     /// deque. Reset whenever a task is served from any other source.
     pub lifo_polls: Cell<u32>,
+    /// Counts run-loop iterations to drive a periodic *macrotask* yield.
+    /// The per-task yields are microtasks, which the JS event loop drains
+    /// in full before dispatching any macrotask — so an unbroken run of
+    /// ready tasks would starve browser events (`WebSocket`
+    /// open/message/close, `fetch` completions) that arrive as macrotasks.
+    /// Every Nth busy iteration the worker yields a macrotask instead.
+    pub macro_tick: Cell<u32>,
 }
 
 /// Max consecutive LIFO-slot polls before the occupant is demoted to
@@ -59,6 +66,7 @@ impl WorkerCtx {
             lifo: Cell::new(None),
             tick: Cell::new(0),
             lifo_polls: Cell::new(0),
+            macro_tick: Cell::new(0),
         }
     }
 

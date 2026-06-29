@@ -52,9 +52,20 @@ pub fn install_listener(worker: &web_sys::Worker, on_death: Option<DeathCallback
     // afterward (errors can fire multiple times for the same worker).
     let death_slot: Rc<Cell<Option<DeathCallback>>> = Rc::new(Cell::new(on_death));
     let err_cb = Closure::<dyn FnMut(web_sys::ErrorEvent)>::new(move |ev: web_sys::ErrorEvent| {
+        // Read fields defensively. `message`/`filename` can be `undefined`
+        // (a non-`Error` throw, or a worker torn down mid-flight), and the
+        // typed `web_sys` accessors trap on `undefined` — fired from inside
+        // this `onerror` handler that trap would itself surface as an
+        // uncaught error and mask the original fault.
+        let read_str = |key: &str| -> String {
+            js_sys::Reflect::get(ev.as_ref(), &key.into())
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default()
+        };
         web_sys::console::error_2(
             &"wasmt: worker error:".into(),
-            &format!("{} at {}:{}", ev.message(), ev.filename(), ev.lineno()).into(),
+            &format!("{} at {}", read_str("message"), read_str("filename")).into(),
         );
         if let Some(cb) = death_slot.take() {
             cb();

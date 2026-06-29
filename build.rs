@@ -38,7 +38,8 @@ fn main() {
             // package name is `[A-Za-z0-9_-]+`. Reject anything else so a stray
             // quote/slash can't break or inject into the generated import.
             assert!(
-                pkg.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                pkg.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
                 "WASMT_WASM_PKG = {pkg:?} is not a valid package name (expected [A-Za-z0-9_-]+)"
             );
             // wasm-bindgen names the glue `<pkg_snake>.js` (hyphens → underscores).
@@ -58,7 +59,9 @@ fn main() {
     // Write only when the content actually differs, so we don't bump the mtime
     // (and trigger a spurious wasm-bindgen snippet rebuild) on every `cargo`
     // invocation.
-    let unchanged = fs::read_to_string(&out).map(|cur| cur == contents).unwrap_or(false);
+    let unchanged = fs::read_to_string(&out)
+        .map(|cur| cur == contents)
+        .unwrap_or(false);
     if !unchanged {
         fs::write(&out, contents).expect("write generated worker.js");
     }

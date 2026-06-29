@@ -893,6 +893,14 @@ struct WorkerBootstrap {
 /// re-feeding its own LIFO slot.
 const GLOBAL_QUEUE_INTERVAL: u32 = 31;
 
+/// Work-doing run-loop iterations between forced *macrotask* yields. The
+/// per-task yields are microtasks, which the JS event loop drains entirely
+/// before dispatching any macrotask — so an unbroken run of ready tasks
+/// would starve browser events that arrive as macrotasks. Yielding a macrotask
+/// every Nth busy iteration bounds that starvation while amortising the
+/// yield's event-loop-round-trip cost.
+const MACROTASK_YIELD_INTERVAL: u32 = 256;
+
 /// Worker entry point: turn the bootstrap struct into a `WorkerCtx`,
 /// claim our local deque, run the executor loop until shutdown.
 ///
@@ -928,6 +936,20 @@ async fn run_loop(ctx: &WorkerCtx, handle: &Handle) {
     loop {
         if handle.inner.shutdown.load(Ordering::Acquire) {
             break;
+        }
+
+        // Periodically yield a macrotask so this worker's JS event loop
+        // dispatches browser events. The per-task yields below
+        // are microtasks; the event loop drains the microtask queue in
+        // full before reaching any macrotask, so a worker with an unbroken
+        // run of ready tasks would starve those events for as long as the
+        // run lasts. The counter only advances on busy iterations
+        // (an idle worker parks instead of ooping), so the cost
+        // scales with how busy the worker is.
+        let mt = ctx.macro_tick.get().wrapping_add(1);
+        ctx.macro_tick.set(mt);
+        if mt.is_multiple_of(MACROTASK_YIELD_INTERVAL) {
+            yield_macrotask().await;
         }
 
         // Drain pinned-job constructors (each one builds a !Send
