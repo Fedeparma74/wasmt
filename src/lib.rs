@@ -65,12 +65,18 @@ compile_error!(
     "wasmt requires `+atomics +bulk-memory +mutable-globals`. Set RUSTFLAGS or .cargo/config.toml accordingly."
 );
 
+#[cfg(feature = "net")]
+pub mod net;
 pub mod runtime;
 pub mod sync;
 pub mod task;
 pub mod time;
 pub mod utils;
 
+#[cfg(feature = "net")]
+pub use net::{
+    CloseFrame, Error, Message, State, WebSocketStream, WsStream, connect, connect_with_protocols,
+};
 pub use runtime::{Builder, Handle, Runtime, block_on, set_wasm_js_url, spawn_on_main};
 pub use task::{
     AbortHandle, JoinError, JoinHandle, JoinSet, LocalJoinHandle, spawn, spawn_blocking,

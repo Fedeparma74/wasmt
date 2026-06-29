@@ -10,6 +10,21 @@ edition = "2024"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Opt-in WebSocket networking (src/net). Gates the extra web-sys APIs so the
+# default build is unchanged. No new crates: send uses send_with_array_buffer
+# (ArrayBuffer/Uint8Array are js-sys); Sink/Stream/io come from `futures`.
+net = [
+  "web-sys/WebSocket",
+  "web-sys/BinaryType", # set_binary_type(Arraybuffer)
+  "web-sys/CloseEvent",
+]
+# Opt-in for the network-dependent WebSocket tests (tests/net.rs). They need a
+# browser test runner AND a reachable echo server (override the default with
+# the WS_ECHO_URL env var at build time). Kept off the default `net` so a plain
+# `cargo test --features net` never blocks on the network.
+net-tests = ["net"]
+
 [dependencies]
 console_error_panic_hook = "0.1"
 crossbeam-deque = "0.8"
